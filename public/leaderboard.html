@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📊 Live Leaderboard Display</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Archivo+Black&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'headline': ['"Anton"', 'sans-serif'],
+            'bebas': ['"Bebas Neue"', 'sans-serif'],
+            'archivo': ['"Archivo Black"', 'sans-serif'],
+            'condensed': ['"Roboto Condensed"', 'sans-serif'],
+          },
+          colors: {
+            'paper': '#f5e6d3',
+            'ink': '#1a1a1a',
+            'red-stamp': '#d32f2f',
+            'blue-ink': '#1565c0',
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Roboto Condensed', sans-serif;
+      background: #f5e6d3;
+      background-image: 
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.02) 2px, rgba(0,0,0,.02) 4px),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,.02) 2px, rgba(0,0,0,.02) 4px);
+    }
+    .newspaper-border {
+      border: 4px solid #1a1a1a;
+      box-shadow: 
+        inset 0 0 0 2px #1a1a1a,
+        inset 0 0 0 12px #f5e6d3,
+        inset 0 0 0 14px #1a1a1a;
+    }
+    @keyframes slideDown {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .animate-slideDown { animation: slideDown 0.3s ease-out; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .live-indicator {
+      animation: pulse 2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+  <div class="max-w-7xl mx-auto">
+    <div class="newspaper-border bg-paper p-6 md:p-12">
+      
+      <!-- Header -->
+      <div class="border-b-8 border-ink pb-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="live-indicator">
+            <span class="inline-block w-4 h-4 bg-red-stamp rounded-full mr-2"></span>
+            <span class="font-bebas text-lg md:text-2xl uppercase">Live</span>
+          </div>
+          <div class="text-right">
+            <div class="text-xs md:text-sm font-condensed uppercase tracking-wider">Game Code</div>
+            <div id="gameCode" class="font-headline text-2xl md:text-4xl">------</div>
+          </div>
+        </div>
+        
+        <h1 class="font-headline text-6xl md:text-9xl lg:text-[12rem] text-center uppercase leading-none mb-4">
+          LEADERBOARD
+        </h1>
+        
+        <div class="text-center">
+          <p class="font-condensed text-sm md:text-lg uppercase tracking-wider">
+            Real-time Competition Rankings • Updated Live
+          </p>
+        </div>
+      </div>
+
+      <!-- Current Round Info -->
+      <div id="roundInfo" class="mb-8"></div>
+
+      <!-- Leaderboard -->
+      <div id="leaderboard" class="space-y-4 md:space-y-6 mb-12">
+        <div class="text-center text-gray-500 py-20">
+          <div class="font-bebas text-4xl md:text-6xl mb-4">WAITING FOR DATA</div>
+          <p class="text-base md:text-lg">Leaderboard will update automatically when rounds are completed</p>
+        </div>
+      </div>
+
+      <!-- Footer Stats -->
+      <div class="border-t-4 border-ink pt-6 grid grid-cols-3 gap-4 text-center">
+        <div>
+          <div class="font-bebas text-3xl md:text-5xl" id="totalParticipants">0</div>
+          <div class="text-xs md:text-sm uppercase tracking-wider">Participants</div>
+        </div>
+        <div>
+          <div class="font-bebas text-3xl md:text-5xl" id="totalRounds">0</div>
+          <div class="text-xs md:text-sm uppercase tracking-wider">Rounds Played</div>
+        </div>
+        <div>
+          <div class="font-bebas text-3xl md:text-5xl" id="fastestTime">---</div>
+          <div class="text-xs md:text-sm uppercase tracking-wider">Fastest Buzz</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Get game code from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameCodeParam = urlParams.get('code');
+    
+    let ws = null;
+    let gameCode = null;
+    let totalRounds = 0;
+    let fastestBuzz = null;
+
+    function initWebSocket() {
+      ws = new WebSocket(`ws://${location.host}`);
+
+      ws.onopen = () => {
+        console.log('✅ Connected to server');
+        
+        // If game code provided in URL, auto-join
+        if (gameCodeParam) {
+          joinAsDisplay(gameCodeParam.toUpperCase());
+        } else {
+          // Prompt for game code
+          const code = prompt('Enter game code to display:');
+          if (code && code.trim()) {
+            joinAsDisplay(code.toUpperCase());
+          }
+        }
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleMessage(data);
+      };
+
+      ws.onclose = () => {
+        console.log('❌ Disconnected - Reconnecting...');
+        setTimeout(initWebSocket, 2000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+    }
+
+    function joinAsDisplay(code) {
+      gameCode = code;
+      document.getElementById('gameCode').textContent = code;
+      ws.send(JSON.stringify({ 
+        type: 'joinGame', 
+        name: 'Leaderboard Display', 
+        code: code 
+      }));
+    }
+
+    function handleMessage(data) {
+      console.log('Received:', data);
+
+      switch (data.type) {
+        case 'joinedGame':
+          ws.send(JSON.stringify({ type: 'requestUpdate' }));
+          break;
+          
+        case 'roundStarted':
+          totalRounds++;
+          document.getElementById('totalRounds').textContent = totalRounds;
+          document.getElementById('roundInfo').innerHTML = `
+            <div class="bg-blue-ink text-white p-6 text-center animate-slideDown">
+              <p class="font-headline text-4xl md:text-6xl">ROUND ${data.roundNumber} IN PROGRESS</p>
+              <p class="font-condensed text-lg md:text-2xl mt-2">Get ready to buzz!</p>
+            </div>
+          `;
+          break;
+          
+        case 'buzzed':
+          if (!fastestBuzz || data.buzz.time < fastestBuzz) {
+            fastestBuzz = data.buzz.time;
+            document.getElementById('fastestTime').textContent = fastestBuzz + 'ms';
+          }
+          break;
+          
+        case 'roundEnded':
+          document.getElementById('roundInfo').innerHTML = `
+            <div class="bg-green-600 text-white p-6 text-center animate-slideDown">
+              <p class="font-headline text-4xl md:text-6xl">ROUND COMPLETE</p>
+            </div>
+          `;
+          updateLeaderboard(data.leaderboard);
+          break;
+          
+        case 'participantJoined':
+        case 'participantLeft':
+          document.getElementById('totalParticipants').textContent = data.participants.length;
+          break;
+          
+        case 'gameUpdate':
+          document.getElementById('totalParticipants').textContent = data.participants.length;
+          if (data.leaderboard) {
+            updateLeaderboard(data.leaderboard);
+          }
+          break;
+          
+        case 'error':
+          alert('Error: ' + data.message);
+          break;
+      }
+    }
+
+    function updateLeaderboard(leaderboard) {
+      const board = document.getElementById('leaderboard');
+      
+      if (!leaderboard || leaderboard.length === 0) {
+        board.innerHTML = `
+          <div class="text-center text-gray-500 py-20">
+            <div class="font-bebas text-4xl md:text-6xl mb-4">NO RANKINGS YET</div>
+            <p class="text-base md:text-lg">Complete a round to see results</p>
+          </div>
+        `;
+        return;
+      }
+
+      const rankings = [
+        { border: 'border-yellow-500', bg: 'bg-yellow-500/30', medal: '🥇', textSize: 'text-6xl md:text-8xl' },
+        { border: 'border-gray-400', bg: 'bg-gray-400/30', medal: '🥈', textSize: 'text-5xl md:text-7xl' },
+        { border: 'border-orange-600', bg: 'bg-orange-600/30', medal: '🥉', textSize: 'text-4xl md:text-6xl' }
+      ];
+      
+      const html = leaderboard.map((entry, index) => {
+        const rank = rankings[index] || { 
+          border: 'border-blue-ink', 
+          bg: 'bg-blue-ink/10', 
+          medal: '🏅',
+          textSize: 'text-3xl md:text-5xl'
+        };
+        
+        return `
+          <div class="border-4 ${rank.border} ${rank.bg} p-6 md:p-8 animate-slideDown" style="animation-delay: ${index * 0.1}s">
+            <div class="flex items-center gap-4 md:gap-8">
+              <div class="${rank.textSize} min-w-[80px] md:min-w-[120px] text-center">${rank.medal}</div>
+              <div class="flex-1">
+                <div class="font-headline ${rank.textSize} mb-2 uppercase">${entry.name}</div>
+                <div class="font-condensed text-sm md:text-xl text-gray-700 grid grid-cols-3 gap-4">
+                  <div>
+                    <span class="block text-xs uppercase">Avg Speed</span>
+                    <span class="font-bold text-lg md:text-2xl">${entry.avgTime}ms</span>
+                  </div>
+                  <div>
+                    <span class="block text-xs uppercase">Total Buzzes</span>
+                    <span class="font-bold text-lg md:text-2xl">${entry.totalBuzzes}</span>
+                  </div>
+                  <div>
+                    <span class="block text-xs uppercase">Wins</span>
+                    <span class="font-bold text-lg md:text-2xl">${entry.firstPlaces} 🏆</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      board.innerHTML = html;
+    }
+
+    // Initialize
+    window.onload = () => {
+      initWebSocket();
+      console.log('📊 Leaderboard Display - Ready');
+    };
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "buzzer-game-event-system",
+  "version": "2.0.0",
+  "description": "Professional buzzer game with vintage newspaper design - Perfect for events, competitions, and live demonstrations",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "echo 'Open http://localhost:3001 to test the application'"
+  },
+  "keywords": [
+    "buzzer",
+    "game",
+    "event",
+    "websocket",
+    "leaderboard",
+    "competition",
+    "real-time",
+    "newspaper-design"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

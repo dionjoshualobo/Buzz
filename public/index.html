@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎯 BUZZER GAME - Event System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Archivo+Black&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'headline': ['"Anton"', 'sans-serif'],
+            'bebas': ['"Bebas Neue"', 'sans-serif'],
+            'archivo': ['"Archivo Black"', 'sans-serif'],
+            'condensed': ['"Roboto Condensed"', 'sans-serif'],
+          },
+          colors: {
+            'paper': '#f5e6d3',
+            'ink': '#1a1a1a',
+            'red-stamp': '#d32f2f',
+            'blue-ink': '#1565c0',
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Roboto Condensed', sans-serif;
+      background: #f5e6d3;
+      background-image: 
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.02) 2px, rgba(0,0,0,.02) 4px),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,.02) 2px, rgba(0,0,0,.02) 4px);
+    }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .stamp {
+      position: absolute;
+      transform: rotate(-15deg);
+      font-family: 'Anton', sans-serif;
+      font-size: 3rem;
+      color: #d32f2f;
+      opacity: 0.2;
+      pointer-events: none;
+    }
+    .newspaper-border {
+      border: 3px solid #1a1a1a;
+      box-shadow: 
+        inset 0 0 0 1px #1a1a1a,
+        inset 0 0 0 8px #f5e6d3,
+        inset 0 0 0 9px #1a1a1a;
+    }
+    @keyframes slideDown {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .animate-slideDown { animation: slideDown 0.3s ease-out; }
+  </style>
+</head>
+<body class="min-h-screen p-2 md:p-6">
+
+  <div class="max-w-7xl mx-auto">
+    
+    <!-- Welcome Screen -->
+    <div id="welcomeScreen" class="screen active">
+      <div class="newspaper-border bg-paper p-6 md:p-12 relative overflow-hidden">
+        <div class="stamp" style="top: 20px; right: 20px;">LIVE</div>
+        
+        <div class="border-b-4 border-ink pb-4 mb-8">
+          <div class="text-center mb-2">
+            <div class="text-xs md:text-sm font-condensed uppercase tracking-wider">Interactive Event System</div>
+          </div>
+          <h1 class="font-headline text-5xl md:text-8xl text-center uppercase leading-none mb-2">
+            BUZZER GAME
+          </h1>
+          <div class="flex items-center justify-center gap-4 text-xs md:text-sm font-condensed">
+            <span class="uppercase">Real-time Competition</span>
+            <span class="w-2 h-2 bg-red-stamp rounded-full"></span>
+            <span class="uppercase">Live Leaderboard</span>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-8 md:gap-12">
+          <div>
+            <h2 class="font-bebas text-4xl md:text-5xl uppercase mb-4 leading-tight">
+              ARE YOU READY TO COMPETE?
+            </h2>
+            <p class="text-base md:text-lg mb-6 leading-relaxed">
+              Test your reflexes in this high-speed buzzer competition. 
+              React faster than your opponents and climb to the top of the leaderboard.
+            </p>
+            <div class="border-l-4 border-red-stamp pl-4 mb-8 bg-red-stamp/5 p-4">
+              <p class="font-bold text-sm md:text-base uppercase mb-2">How It Works:</p>
+              <ul class="space-y-2 text-sm md:text-base">
+                <li>→ Host creates a game with unique code</li>
+                <li>→ Players join using the code</li>
+                <li>→ Fastest buzz wins the round</li>
+                <li>→ Track rankings on live leaderboard</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="flex flex-col justify-center">
+            <div class="bg-ink text-paper p-8 mb-6">
+              <h3 class="font-bebas text-3xl md:text-4xl mb-4">HOST EVENT</h3>
+              <p class="mb-6 text-sm md:text-base">Start a new game session and get your unique join code.</p>
+              <button onclick="showHostScreen()" 
+                      class="w-full bg-red-stamp hover:bg-red-700 text-white font-bold py-4 px-8 text-lg md:text-xl uppercase transition-all border-4 border-red-stamp hover:border-red-700">
+                Start Hosting →
+              </button>
+            </div>
+
+            <div class="border-4 border-ink p-8">
+              <h3 class="font-bebas text-3xl md:text-4xl mb-4">JOIN GAME</h3>
+              <p class="mb-6 text-sm md:text-base">Enter your name and the game code to participate.</p>
+              <button onclick="showJoinScreen()" 
+                      class="w-full bg-blue-ink hover:bg-blue-700 text-white font-bold py-4 px-8 text-lg md:text-xl uppercase transition-all border-4 border-blue-ink hover:border-blue-700">
+                Join Now →
+              </button>
+            </div>
+
+            <div class="mt-6 text-center">
+              <button onclick="showLeaderboardOnly()" 
+                      class="text-blue-ink hover:text-blue-700 font-bold uppercase text-sm md:text-base underline">
+                📊 View Leaderboard Display
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t-2 border-ink mt-8 pt-4 text-center text-xs md:text-sm font-condensed">
+          <div class="uppercase tracking-wider">Powered by WebSocket • Real-time Updates • Zero Latency</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Host Screen -->
+    <div id="hostScreen" class="screen">
+      <div class="newspaper-border bg-paper p-6 md:p-12">
+        <div class="border-b-4 border-ink pb-4 mb-6">
+          <h1 class="font-headline text-4xl md:text-6xl uppercase">HOST CONTROL PANEL</h1>
+          <p class="font-condensed text-sm md:text-base mt-2">Manage your event session</p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-6 mb-8">
+          <div class="md:col-span-2">
+            <div class="bg-ink text-paper p-6 mb-6">
+              <div class="text-xs uppercase tracking-wider mb-2">Game Code</div>
+              <div id="codeDisplay" class="font-headline text-4xl md:text-6xl tracking-wider">LOADING...</div>
+              <div class="text-xs mt-2 opacity-75">Share this code with participants</div>
+            </div>
+
+            <div class="border-4 border-ink p-6 mb-6">
+              <h3 class="font-bebas text-2xl md:text-3xl mb-4">PARTICIPANTS (<span id="participantCount">0</span>)</h3>
+              <div id="participantsList" class="max-h-60 overflow-y-auto space-y-2">
+                <div class="text-gray-500 text-center text-sm">Waiting for players to join...</div>
+              </div>
+            </div>
+
+            <div id="hostBuzzResults" class="space-y-3"></div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="bg-red-stamp text-white p-6">
+              <h3 class="font-bebas text-2xl mb-4">ROUND CONTROL</h3>
+              <div id="hostRoundInfo" class="mb-4 text-sm"></div>
+              <button onclick="startRound()" id="startRoundBtn"
+                      class="w-full bg-white text-red-stamp font-bold py-3 px-6 mb-3 uppercase hover:bg-gray-100 transition-all">
+                ▶ START ROUND
+              </button>
+              <button onclick="endRound()" id="endRoundBtn" disabled
+                      class="w-full bg-ink text-white font-bold py-3 px-6 uppercase disabled:opacity-50 disabled:cursor-not-allowed">
+                ⏹ END ROUND
+              </button>
+            </div>
+
+            <div class="border-4 border-ink p-6">
+              <button onclick="leaveGame()"
+                      class="w-full bg-ink text-paper font-bold py-3 px-6 uppercase hover:bg-gray-800 transition-all">
+                ❌ CLOSE SESSION
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t-4 border-ink pt-6">
+          <h3 class="font-headline text-3xl md:text-4xl uppercase mb-4">LEADERBOARD</h3>
+          <div id="hostLeaderboard" class="space-y-3">
+            <div class="text-center text-gray-500 text-sm">No data yet. Start a round to begin!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Join Screen -->
+    <div id="joinScreen" class="screen">
+      <div class="newspaper-border bg-paper p-6 md:p-12 max-w-2xl mx-auto">
+        <div class="border-b-4 border-ink pb-4 mb-8">
+          <h1 class="font-headline text-4xl md:text-6xl uppercase">JOIN GAME</h1>
+        </div>
+
+        <div class="space-y-6">
+          <div>
+            <label class="font-bebas text-xl md:text-2xl block mb-2">YOUR NAME</label>
+            <input type="text" id="playerName" placeholder="Enter your name" maxlength="20"
+                   class="w-full border-4 border-ink p-4 text-lg md:text-xl font-condensed uppercase focus:outline-none focus:border-blue-ink">
+          </div>
+
+          <div>
+            <label class="font-bebas text-xl md:text-2xl block mb-2">GAME CODE</label>
+            <input type="text" id="joinCode" placeholder="Enter 6-digit code" maxlength="6"
+                   class="w-full border-4 border-ink p-4 text-lg md:text-xl font-headline uppercase tracking-wider focus:outline-none focus:border-blue-ink">
+          </div>
+
+          <div id="joinError"></div>
+
+          <div class="flex gap-4">
+            <button onclick="joinGame()"
+                    class="flex-1 bg-blue-ink text-white font-bold py-4 px-8 text-lg uppercase hover:bg-blue-700 transition-all border-4 border-blue-ink">
+                    ✓ JOIN
+            </button>
+            <button onclick="showWelcomeScreen()"
+                    class="flex-1 bg-white text-ink font-bold py-4 px-8 text-lg uppercase hover:bg-gray-100 transition-all border-4 border-ink">
+              ❌ CANCEL
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Player Screen -->
+    <div id="playerScreen" class="screen">
+      <div class="newspaper-border bg-paper p-6 md:p-12">
+        <div class="border-b-4 border-ink pb-4 mb-6">
+          <h1 class="font-headline text-3xl md:text-5xl uppercase">PLAYER: <span id="playerNameDisplay" class="text-red-stamp"></span></h1>
+          <p class="font-condensed text-sm md:text-base mt-2">Game Code: <span id="gameCodeDisplay" class="font-bold"></span></p>
+        </div>
+
+        <div id="playerRoundInfo" class="mb-6"></div>
+
+        <div class="flex justify-center my-12">
+          <button id="buzzBtn" onclick="buzz()" disabled
+                  class="w-48 h-48 md:w-64 md:h-64 rounded-full bg-red-stamp hover:bg-red-700 text-white font-headline text-3xl md:text-5xl uppercase transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-8 border-ink shadow-2xl">
+            BUZZ!
+          </button>
+        </div>
+
+        <div id="playerBuzzResult" class="mb-8"></div>
+
+        <div class="border-t-4 border-ink pt-6">
+          <h3 class="font-headline text-2xl md:text-3xl uppercase mb-4">LEADERBOARD</h3>
+          <div id="playerLeaderboard" class="space-y-3">
+            <div class="text-center text-gray-500 text-sm">Waiting for round to start...</div>
+          </div>
+        </div>
+
+        <div class="mt-8 text-center">
+          <button onclick="leaveGame()"
+                  class="bg-ink text-paper font-bold py-3 px-8 uppercase hover:bg-gray-800 transition-all border-4 border-ink">
+            ❌ LEAVE GAME
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard Display (Fullscreen for events) -->
+    <div id="leaderboardScreen" class="screen">
+      <div class="newspaper-border bg-paper p-6 md:p-12 min-h-screen">
+        <div class="border-b-8 border-ink pb-6 mb-8">
+          <div class="text-center">
+            <div class="text-xs md:text-sm font-condensed uppercase tracking-wider mb-2">Live Competition Results</div>
+            <h1 class="font-headline text-6xl md:text-9xl uppercase leading-none">LEADERBOARD</h1>
+            <div class="mt-4 flex items-center justify-center gap-4">
+              <span class="font-bebas text-lg md:text-2xl">Game Code:</span>
+              <span id="leaderboardGameCode" class="font-headline text-2xl md:text-4xl text-red-stamp">------</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="leaderboardDisplay" class="space-y-4">
+          <div class="text-center text-gray-500 text-xl py-20">
+            <p class="font-bebas text-3xl mb-4">WAITING FOR GAME DATA</p>
+            <p class="text-sm">Connect to an active game session to display live rankings</p>
+          </div>
+        </div>
+
+        <div class="mt-12 text-center">
+          <button onclick="showWelcomeScreen()"
+                  class="bg-ink text-paper font-bold py-3 px-8 uppercase hover:bg-gray-800 transition-all border-4 border-ink">
+            ← BACK TO HOME
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
