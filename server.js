@@ -7,6 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const WebSocket = require('ws');
 const path = require('path');
+const os = require('os');
 
 // Configuration
 const PORT = process.env.PORT || 3001;
@@ -17,6 +18,19 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // ============================================
 
 const games = new Map();
+
+function getNetworkIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal (i.e. 127.0.0.1) and non-IPv4 addresses
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost'; // fallback
+}
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -331,10 +345,14 @@ function broadcastToGame(gameCode, message) {
 // ============================================
 
 server.listen(PORT, () => {
+  const networkIP = getNetworkIP();
+  
   console.log('╔════════════════════════════════════════╗');
   console.log('║       🎯 BUZZER GAME SERVER           ║');
   console.log('╚════════════════════════════════════════╝');
-  console.log(`\n🌐 Server: http://localhost:${PORT}`);
-  console.log(`📊 Leaderboard: http://localhost:${PORT}/leaderboard`);
-  console.log(`\n⚡ WebSocket ready\n`);
+  console.log(`\n🌐 Local access:    http://localhost:${PORT}`);
+  console.log(`📱 Network access:  http://${networkIP}:${PORT}`);
+  console.log(`📊 Leaderboard:     http://${networkIP}:${PORT}/leaderboard`);
+  console.log(`\n💡 Share the network address with others on your WiFi!`);
+  console.log(`⚡ WebSocket ready\n`);
 });
