@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📊 Game History & Statistics</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Archivo+Black&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'headline': ['"Anton"', 'sans-serif'],
+            'bebas': ['"Bebas Neue"', 'sans-serif'],
+            'archivo': ['"Archivo Black"', 'sans-serif'],
+            'condensed': ['"Roboto Condensed"', 'sans-serif'],
+          },
+          colors: {
+            'paper': '#f5e6d3',
+            'ink': '#1a1a1a',
+            'red-stamp': '#d32f2f',
+            'blue-ink': '#1565c0',
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Roboto Condensed', sans-serif;
+      background: #f5e6d3;
+      background-image: 
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.02) 2px, rgba(0,0,0,.02) 4px),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,.02) 2px, rgba(0,0,0,.02) 4px);
+    }
+    .newspaper-border {
+      border: 4px solid #1a1a1a;
+      box-shadow: 
+        inset 0 0 0 2px #1a1a1a,
+        inset 0 0 0 12px #f5e6d3,
+        inset 0 0 0 14px #1a1a1a;
+    }
+    @keyframes slideDown {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .animate-slideDown { animation: slideDown 0.3s ease-out; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .live-indicator {
+      animation: pulse 2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+  <div class="max-w-7xl mx-auto">
+    <div class="newspaper-border bg-paper p-6 md:p-12">
+      
+      <!-- Header -->
+      <div class="border-b-8 border-ink pb-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex gap-4">
+            <a href="/" class="font-condensed text-sm md:text-base px-4 py-2 border-2 border-ink bg-blue-ink text-white hover:bg-ink transition-colors">
+              ← Back to Game
+            </a>
+            <a href="/leaderboard" class="font-condensed text-sm md:text-base px-4 py-2 border-2 border-ink hover:bg-gray-100 transition-colors">
+              Live Board
+            </a>
+          </div>
+          <div class="text-right">
+            <div class="text-xs md:text-sm font-condensed uppercase tracking-wider">Game Code</div>
+            <div id="gameCode" class="font-headline text-2xl md:text-4xl">------</div>
+          </div>
+        </div>
+        
+        <h1 class="font-headline text-6xl md:text-9xl lg:text-[12rem] text-center uppercase leading-none mb-4">
+          HISTORY
+        </h1>
+        
+        <div class="text-center">
+          <p class="font-condensed text-sm md:text-lg uppercase tracking-wider">
+            Complete Game Statistics • All-Time Performance
+          </p>
+        </div>
+      </div>
+
+      <!-- Game Summary -->
+      <div id="gameSummary" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div class="border-4 border-ink p-6 text-center">
+          <div class="font-headline text-4xl md:text-6xl mb-2" id="totalRounds">--</div>
+          <div class="font-condensed text-sm uppercase tracking-wider">Total Rounds</div>
+        </div>
+        <div class="border-4 border-ink p-6 text-center">
+          <div class="font-headline text-4xl md:text-6xl mb-2" id="totalPlayers">--</div>
+          <div class="font-condensed text-sm uppercase tracking-wider">Total Players</div>
+        </div>
+        <div class="border-4 border-ink p-6 text-center">
+          <div class="font-headline text-4xl md:text-6xl mb-2" id="gameStatus">ACTIVE</div>
+          <div class="font-condensed text-sm uppercase tracking-wider">Game Status</div>
+        </div>
+      </div>
+
+      <!-- Overall Leaderboard -->
+      <div class="mb-12">
+        <h2 class="font-headline text-4xl md:text-6xl mb-8 text-center border-b-4 border-ink pb-4">
+          OVERALL RANKINGS
+        </h2>
+        <div id="historyLeaderboard" class="space-y-4 md:space-y-6">
+          <div class="text-center text-gray-500 py-20">
+            <div class="font-bebas text-4xl md:text-6xl mb-4">NO DATA YET</div>
+            <p class="text-base md:text-lg">Complete some rounds to see overall statistics</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Rounds -->
+      <div class="mb-12">
+        <h2 class="font-headline text-4xl md:text-6xl mb-8 text-center border-b-4 border-ink pb-4">
+          ROUND HISTORY
+        </h2>
+        <div id="roundHistory" class="space-y-4">
+          <div class="text-center text-gray-500 py-20">
+            <div class="font-bebas text-4xl md:text-6xl mb-4">NO ROUNDS YET</div>
+            <p class="text-base md:text-lg">Start playing to see round-by-round results</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="border-t-4 border-ink pt-6 text-center">
+        <p class="font-condensed text-sm text-gray-700">
+          🎯 BUZZER GAME • Real-time Competition System
+        </p>
+        <div class="mt-2">
+          <span class="inline-block w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+          <span class="font-condensed text-xs uppercase tracking-wider">Connected</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Join Game Modal -->
+  <div id="joinModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="newspaper-border bg-paper p-8 max-w-md w-full">
+      <h3 class="font-headline text-3xl mb-6 text-center">JOIN GAME</h3>
+      <div class="space-y-4">
+        <div>
+          <input 
+            type="text" 
+            id="gameCodeInput" 
+            placeholder="Enter Game Code" 
+            class="w-full p-4 border-2 border-ink text-center font-condensed text-lg uppercase tracking-widest bg-paper focus:outline-none focus:bg-white"
+            maxlength="6"
+          >
+        </div>
+        <div>
+          <input 
+            type="text" 
+            id="playerNameInput" 
+            placeholder="Enter Your Name" 
+            class="w-full p-4 border-2 border-ink text-center font-condensed text-lg bg-paper focus:outline-none focus:bg-white"
+            value="History Viewer"
+            readonly
+          >
+        </div>
+        <button 
+          onclick="joinGame()" 
+          class="w-full bg-blue-ink text-white p-4 font-condensed text-lg uppercase tracking-wider hover:bg-ink transition-colors"
+        >
+          Join Game
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // WebSocket connection and game state
+    let ws = null;
+    let gameCode = null;
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      initWebSocket();
+      showJoinModal();
+    });
+
+    function initWebSocket() {
+      ws = new WebSocket(`ws://${location.host}`);
+
+      ws.onopen = () => {
+        console.log('✅ Connected to server');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleMessage(data);
+      };
+
+      ws.onclose = () => {
+        console.log('❌ Disconnected from server');
+        setTimeout(initWebSocket, 2000);
+      };
+    }
+
+    function handleMessage(data) {
+      switch (data.type) {
+        case 'joinedGame':
+          hideJoinModal();
+          gameCode = data.code;
+          document.getElementById('gameCode').textContent = gameCode;
+          requestHistory();
+          break;
+        case 'historyUpdate':
+          updateHistory(data);
+          break;
+        case 'error':
+          alert(data.message);
+          break;
+      }
+    }
+
+    function showJoinModal() {
+      document.getElementById('joinModal').classList.remove('hidden');
+    }
+
+    function hideJoinModal() {
+      document.getElementById('joinModal').classList.add('hidden');
+    }
+
+    function joinGame() {
+      const code = document.getElementById('gameCodeInput').value.trim().toUpperCase();
+      const name = document.getElementById('playerNameInput').value.trim();
+
+      if (!code || !name) {
+        alert('Please enter both game code and your name');
+        return;
+      }
+
+      ws.send(JSON.stringify({
+        type: 'joinGame',
+        code: code,
+        name: name
+      }));
+    }
+
+    function requestHistory() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'requestHistory'
+        }));
+      }
+    }
+
+    function updateHistory(data) {
+      // Update game summary
+      document.getElementById('totalRounds').textContent = data.totalRounds || 0;
+      document.getElementById('totalPlayers').textContent = data.historyLeaderboard?.length || 0;
+
+      // Update overall leaderboard
+      updateHistoryLeaderboard(data.historyLeaderboard);
+      
+      // Update round history
+      updateRoundHistory(data.rounds);
+    }
+
+    function updateHistoryLeaderboard(leaderboard) {
+      const board = document.getElementById('historyLeaderboard');
+      
+      if (!leaderboard || leaderboard.length === 0) {
+        board.innerHTML = `
+          <div class="text-center text-gray-500 py-20">
+            <div class="font-bebas text-4xl md:text-6xl mb-4">NO DATA YET</div>
+            <p class="text-base md:text-lg">Complete some rounds to see overall statistics</p>
+          </div>
+        `;
+        return;
+      }
+
+      const rankings = [
+        { border: 'border-yellow-500', bg: 'bg-yellow-500/20', medal: '🥇' },
+        { border: 'border-gray-400', bg: 'bg-gray-400/20', medal: '🥈' },
+        { border: 'border-orange-600', bg: 'bg-orange-600/20', medal: '🥉' }
+      ];
+
+      const html = leaderboard.map((entry, index) => {
+        const rank = rankings[index] || { border: 'border-blue-ink', bg: 'bg-blue-ink/10', medal: '🏅' };
+        return `
+          <div class="border-4 ${rank.border} ${rank.bg} p-6 md:p-8 animate-slideDown" style="animation-delay: ${index * 0.1}s">
+            <div class="flex items-center gap-4 md:gap-8">
+              <div class="text-4xl md:text-6xl min-w-[80px] md:min-w-[120px] text-center">${rank.medal}</div>
+              <div class="flex-1">
+                <div class="font-headline text-3xl md:text-5xl mb-2 uppercase">${entry.name}</div>
+                <div class="font-condensed text-sm md:text-xl text-gray-700 grid grid-cols-3 gap-4">
+                  <div>
+                    <span class="block text-xs uppercase">Avg Speed</span>
+                    <span class="font-bold text-lg md:text-2xl">${entry.avgTime}ms</span>
+                  </div>
+                  <div>
+                    <span class="block text-xs uppercase">Total Buzzes</span>
+                    <span class="font-bold text-lg md:text-2xl">${entry.totalBuzzes}</span>
+                  </div>
+                  <div>
+                    <span class="block text-xs uppercase">Wins</span>
+                    <span class="font-bold text-lg md:text-2xl">${entry.firstPlaces} 🏆</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      board.innerHTML = html;
+    }
+
+    function updateRoundHistory(rounds) {
+      const container = document.getElementById('roundHistory');
+      
+      if (!rounds || rounds.length === 0) {
+        container.innerHTML = `
+          <div class="text-center text-gray-500 py-20">
+            <div class="font-bebas text-4xl md:text-6xl mb-4">NO ROUNDS YET</div>
+            <p class="text-base md:text-lg">Start playing to see round-by-round results</p>
+          </div>
+        `;
+        return;
+      }
+
+      const html = rounds.slice().reverse().map((round, index) => {
+        const sortedBuzzes = round.buzzes.sort((a, b) => a.time - b.time);
+        const winner = sortedBuzzes[0];
+        
+        return `
+          <div class="border-4 border-ink p-6 animate-slideDown" style="animation-delay: ${index * 0.05}s">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-headline text-2xl md:text-3xl">ROUND ${round.roundNumber}</h3>
+              <div class="text-right">
+                <div class="font-condensed text-sm text-gray-600">Winner</div>
+                <div class="font-bebas text-xl">${winner ? winner.name : 'N/A'} ${winner ? '🏆' : ''}</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              ${sortedBuzzes.map((buzz, pos) => `
+                <div class="border-2 border-gray-300 p-3 ${pos === 0 ? 'bg-yellow-100 border-yellow-500' : ''}">
+                  <div class="font-bebas text-lg">#${pos + 1} ${buzz.name}</div>
+                  <div class="font-condensed text-sm text-gray-600">${buzz.time}ms</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = html;
+    }
+
+    // Auto-refresh history every 5 seconds
+    setInterval(() => {
+      if (gameCode) {
+        requestHistory();
+      }
+    }, 5000);
+  </script>
+
+</body>
+</html>
