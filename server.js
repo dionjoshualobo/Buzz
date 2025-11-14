@@ -104,7 +104,7 @@ class Game {
       return [];
     }
     
-    // Sort buzzes by time (fastest first)
+    // Sort buzzes by time (fastest first) - only players who buzzed in this round
     const sortedBuzzes = [...this.currentRound.buzzes].sort((a, b) => a.time - b.time);
     
     return sortedBuzzes.map((buzz, index) => ({
@@ -114,25 +114,17 @@ class Game {
     }));
   }
 
+  hasAllPlayersBuzzed() {
+    if (!this.currentRound) return false;
+    
+    // Check if all participants have buzzed in this round
+    const buzzedParticipantIds = new Set(this.currentRound.buzzes.map(b => b.participantId));
+    return buzzedParticipantIds.size >= this.participants.size;
+  }
+
   getLeaderboard() {
-    const leaderboard = [];
-    this.participants.forEach((participant) => {
-      if (participant.buzzHistory.length > 0) {
-        const avgTime =
-          participant.buzzHistory.reduce((sum, b) => sum + b.time, 0) /
-          participant.buzzHistory.length;
-        const firstPlaces = participant.buzzHistory.filter(
-          (b) => b.position === 1
-        ).length;
-        leaderboard.push({
-          name: participant.name,
-          avgTime: Math.round(avgTime),
-          totalBuzzes: participant.buzzHistory.length,
-          firstPlaces,
-        });
-      }
-    });
-    return leaderboard.sort((a, b) => a.avgTime - b.avgTime);
+    // Return current round leaderboard for all contexts
+    return this.getCurrentRoundLeaderboard();
   }
 }
 
@@ -254,9 +246,17 @@ function joinGame(clientId, conn, data) {
     return;
   }
 
-  game.addParticipant(clientId, data.name);
+  // Check if this is a leaderboard display
+  const isLeaderboardDisplay = data.name === 'Leaderboard Display';
+  
+  if (!isLeaderboardDisplay) {
+    // Only add actual players to the game
+    game.addParticipant(clientId, data.name);
+  }
+  
   conn.gameCode = data.code;
   conn.isHost = false;
+  conn.isLeaderboardDisplay = isLeaderboardDisplay;
 
   conn.ws.send(
     JSON.stringify({
@@ -266,10 +266,12 @@ function joinGame(clientId, conn, data) {
     })
   );
 
-  broadcastToGame(data.code, {
-    type: 'participantJoined',
-    participants: Array.from(game.participants.values()),
-  });
+  if (!isLeaderboardDisplay) {
+    broadcastToGame(data.code, {
+      type: 'participantJoined',
+      participants: Array.from(game.participants.values()),
+    });
+  }
 }
 
 function startRound(clientId, conn) {
@@ -296,6 +298,19 @@ function handleBuzz(clientId, conn) {
       position: game.currentRound.buzzes.length,
       currentRoundLeaderboard: game.getCurrentRoundLeaderboard(),
     });
+
+    // Check if all players have buzzed and auto-end round
+    if (game.hasAllPlayersBuzzed()) {
+      setTimeout(() => {
+        game.endRound();
+        const leaderboard = game.getLeaderboard();
+        broadcastToGame(conn.gameCode, {
+          type: 'roundEnded',
+          leaderboard,
+          autoEnded: true,
+        });
+      }, 1000); // 1 second delay to show final results
+    }
   }
 }
 
@@ -332,13 +347,16 @@ function handleDisconnect(clientId) {
   if (conn && conn.gameCode) {
     const game = games.get(conn.gameCode);
     if (game) {
-      game.removeParticipant(clientId);
-      broadcastToGame(conn.gameCode, {
-        type: 'participantLeft',
-        participants: Array.from(game.participants.values()),
-      });
+      // Only remove from participants if not a leaderboard display
+      if (!conn.isLeaderboardDisplay) {
+        game.removeParticipant(clientId);
+        broadcastToGame(conn.gameCode, {
+          type: 'participantLeft',
+          participants: Array.from(game.participants.values()),
+        });
+      }
 
-      // Clean up empty games
+      // Clean up empty games (only count actual players, not leaderboard displays)
       if (game.participants.size === 0) {
         games.delete(conn.gameCode);
       }

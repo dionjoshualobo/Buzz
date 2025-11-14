@@ -202,9 +202,10 @@
           break;
           
         case 'roundEnded':
+          const endMessage = data.autoEnded ? 'ALL PLAYERS BUZZED - AUTO ENDED!' : 'ROUND COMPLETE';
           document.getElementById('roundInfo').innerHTML = `
             <div class="bg-green-600 text-white p-6 text-center animate-slideDown">
-              <p class="font-headline text-4xl md:text-6xl">ROUND COMPLETE</p>
+              <p class="font-headline text-4xl md:text-6xl">${endMessage}</p>
             </div>
           `;
           updateLeaderboard(data.leaderboard);
@@ -261,18 +262,11 @@
               <div class="${rank.textSize} min-w-[80px] md:min-w-[120px] text-center">${rank.medal}</div>
               <div class="flex-1">
                 <div class="font-headline ${rank.textSize} mb-2 uppercase">${entry.name}</div>
-                <div class="font-condensed text-sm md:text-xl text-gray-700 grid grid-cols-3 gap-4">
-                  <div>
-                    <span class="block text-xs uppercase">Avg Speed</span>
-                    <span class="font-bold text-lg md:text-2xl">${entry.avgTime}ms</span>
-                  </div>
-                  <div>
-                    <span class="block text-xs uppercase">Total Buzzes</span>
-                    <span class="font-bold text-lg md:text-2xl">${entry.totalBuzzes}</span>
-                  </div>
-                  <div>
-                    <span class="block text-xs uppercase">Wins</span>
-                    <span class="font-bold text-lg md:text-2xl">${entry.firstPlaces} 🏆</span>
+                <div class="font-condensed text-sm md:text-xl text-gray-700">
+                  <div class="text-center">
+                    <span class="block text-xs uppercase">Current Round Time</span>
+                    <span class="font-bold text-2xl md:text-4xl">${entry.time}ms</span>
+                    <div class="text-xs mt-1">Position #${entry.position}</div>
                   </div>
                 </div>
               </div>
