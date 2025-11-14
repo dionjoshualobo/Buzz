@@ -186,12 +186,18 @@
               <p class="font-condensed text-lg md:text-2xl mt-2">Get ready to buzz!</p>
             </div>
           `;
+          // Clear leaderboard for new round
+          updateCurrentRoundLeaderboard([]);
           break;
           
         case 'buzzed':
           if (!fastestBuzz || data.buzz.time < fastestBuzz) {
             fastestBuzz = data.buzz.time;
             document.getElementById('fastestTime').textContent = fastestBuzz + 'ms';
+          }
+          // Update current round leaderboard if available
+          if (data.currentRoundLeaderboard) {
+            updateCurrentRoundLeaderboard(data.currentRoundLeaderboard);
           }
           break;
           
@@ -268,6 +274,51 @@
                     <span class="block text-xs uppercase">Wins</span>
                     <span class="font-bold text-lg md:text-2xl">${entry.firstPlaces} 🏆</span>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      board.innerHTML = html;
+    }
+
+    function updateCurrentRoundLeaderboard(leaderboard) {
+      const board = document.getElementById('leaderboard');
+      
+      if (!leaderboard || leaderboard.length === 0) {
+        board.innerHTML = `
+          <div class="text-center text-gray-500 py-20">
+            <div class="font-bebas text-4xl md:text-6xl mb-4">WAITING FOR BUZZES</div>
+            <p class="text-base md:text-lg">Players get ready to buzz!</p>
+          </div>
+        `;
+        return;
+      }
+
+      const rankings = [
+        { border: 'border-yellow-500', bg: 'bg-yellow-500/30', medal: '🥇', textSize: 'text-6xl md:text-8xl' },
+        { border: 'border-gray-400', bg: 'bg-gray-400/30', medal: '🥈', textSize: 'text-5xl md:text-7xl' },
+        { border: 'border-orange-600', bg: 'bg-orange-600/30', medal: '🥉', textSize: 'text-4xl md:text-6xl' }
+      ];
+      
+      const html = leaderboard.map((entry, index) => {
+        const rank = rankings[index] || { 
+          border: 'border-blue-ink', 
+          bg: 'bg-blue-ink/10', 
+          medal: '🏅',
+          textSize: 'text-3xl md:text-5xl'
+        };
+        
+        return `
+          <div class="border-4 ${rank.border} ${rank.bg} p-6 md:p-8 animate-slideDown" style="animation-delay: ${index * 0.1}s">
+            <div class="flex items-center gap-4 md:gap-8">
+              <div class="${rank.textSize} min-w-[80px] md:min-w-[120px] text-center">${rank.medal}</div>
+              <div class="flex-1">
+                <div class="font-headline ${rank.textSize} mb-2 uppercase">${entry.name}</div>
+                <div class="font-condensed text-lg md:text-2xl text-gray-700 text-center">
+                  <span class="font-bold">${entry.time}ms</span> - Position #${entry.position}
                 </div>
               </div>
             </div>

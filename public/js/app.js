@@ -153,6 +153,9 @@ function handleRoundStarted(data) {
       </div>`;
     document.getElementById('playerBuzzResult').innerHTML = '';
   }
+  
+  // Clear leaderboards for new round
+  updateCurrentRoundLeaderboard([]);
 }
 
 function handleBuzzed(data) {
@@ -184,6 +187,11 @@ function handleBuzzed(data) {
       `;
       document.getElementById('playerBuzzResult').innerHTML = resultHtml;
     }
+  }
+  
+  // Update current round leaderboard if available
+  if (data.currentRoundLeaderboard) {
+    updateCurrentRoundLeaderboard(data.currentRoundLeaderboard);
   }
 }
 
@@ -266,6 +274,48 @@ function updateLeaderboard(leaderboard) {
             </div>
           </div>
           <div class="font-headline text-3xl md:text-5xl text-right">${entry.avgTime}<span class="text-lg">ms</span></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (hostBoard) hostBoard.innerHTML = html;
+  if (playerBoard) playerBoard.innerHTML = html;
+  if (displayBoard) displayBoard.innerHTML = html;
+}
+
+function updateCurrentRoundLeaderboard(leaderboard) {
+  const hostBoard = document.getElementById('hostLeaderboard');
+  const playerBoard = document.getElementById('playerLeaderboard');
+  const displayBoard = document.getElementById('leaderboardDisplay');
+  
+  if (!leaderboard || leaderboard.length === 0) {
+    const emptyMsg = '<div class="text-center text-gray-500 text-sm py-8">Waiting for players to buzz...</div>';
+    if (hostBoard) hostBoard.innerHTML = emptyMsg;
+    if (playerBoard) playerBoard.innerHTML = emptyMsg;
+    if (displayBoard) displayBoard.innerHTML = emptyMsg;
+    return;
+  }
+
+  const rankings = [
+    { border: 'border-yellow-500', bg: 'bg-yellow-500/20', medal: '🥇' },
+    { border: 'border-gray-400', bg: 'bg-gray-400/20', medal: '🥈' },
+    { border: 'border-orange-600', bg: 'bg-orange-600/20', medal: '🥉' }
+  ];
+  
+  const html = leaderboard.map((entry, index) => {
+    const rank = rankings[index] || { border: 'border-blue-ink', bg: 'bg-blue-ink/10', medal: '🏅' };
+    return `
+      <div class="border-4 ${rank.border} ${rank.bg} p-4 md:p-6 animate-slideDown" style="animation-delay: ${index * 0.1}s">
+        <div class="flex items-center gap-4">
+          <div class="text-4xl md:text-5xl min-w-[60px] text-center">${rank.medal}</div>
+          <div class="flex-1">
+            <div class="font-bebas text-2xl md:text-3xl mb-1">${entry.name}</div>
+            <div class="font-condensed text-sm text-gray-700">
+              Current Round Position: <span class="font-bold">#${entry.position}</span>
+            </div>
+          </div>
+          <div class="font-headline text-3xl md:text-5xl text-right">${entry.time}<span class="text-lg">ms</span></div>
         </div>
       </div>
     `;
