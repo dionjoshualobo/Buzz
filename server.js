@@ -126,6 +126,29 @@ class Game {
     // Return current round leaderboard for all contexts
     return this.getCurrentRoundLeaderboard();
   }
+
+  getHistoryLeaderboard() {
+    // Return overall game statistics for history page only
+    const leaderboard = [];
+    this.participants.forEach((participant) => {
+      if (participant.buzzHistory.length > 0) {
+        const avgTime =
+          participant.buzzHistory.reduce((sum, b) => sum + b.time, 0) /
+          participant.buzzHistory.length;
+        const firstPlaces = participant.buzzHistory.filter(
+          (b) => b.position === 1
+        ).length;
+        leaderboard.push({
+          name: participant.name,
+          avgTime: Math.round(avgTime),
+          totalBuzzes: participant.buzzHistory.length,
+          firstPlaces,
+          rounds: this.rounds.length,
+        });
+      }
+    });
+    return leaderboard.sort((a, b) => a.avgTime - b.avgTime);
+  }
 }
 
 // ============================================
@@ -141,6 +164,8 @@ const server = http.createServer((req, res) => {
     filePath = path.join(PUBLIC_DIR, 'index.html');
   } else if (req.url === '/leaderboard' || req.url === '/leaderboard.html') {
     filePath = path.join(PUBLIC_DIR, 'leaderboard.html');
+  } else if (req.url === '/history' || req.url === '/history.html') {
+    filePath = path.join(PUBLIC_DIR, 'history.html');
   } else if (req.url.endsWith('.js')) {
     filePath = path.join(PUBLIC_DIR, req.url);
     contentType = 'application/javascript';
@@ -214,6 +239,9 @@ function handleMessage(clientId, data) {
       break;
     case 'requestUpdate':
       sendUpdate(clientId, conn);
+      break;
+    case 'requestHistory':
+      sendHistory(clientId, conn);
       break;
   }
 }
@@ -342,6 +370,21 @@ function sendUpdate(clientId, conn) {
   );
 }
 
+function sendHistory(clientId, conn) {
+  const game = games.get(conn.gameCode);
+  if (!game) return;
+
+  conn.ws.send(
+    JSON.stringify({
+      type: 'historyUpdate',
+      historyLeaderboard: game.getHistoryLeaderboard(),
+      rounds: game.rounds,
+      totalRounds: game.rounds.length,
+      gameCode: game.code,
+    })
+  );
+}
+
 function handleDisconnect(clientId) {
   const conn = connections.get(clientId);
   if (conn && conn.gameCode) {
@@ -387,6 +430,7 @@ server.listen(PORT, () => {
   console.log(`\n🌐 Local access:    http://localhost:${PORT}`);
   console.log(`📱 Network access:  http://${networkIP}:${PORT}`);
   console.log(`📊 Leaderboard:     http://${networkIP}:${PORT}/leaderboard`);
+  console.log(`📈 Game History:    http://${networkIP}:${PORT}/history`);
   console.log(`\n💡 Share the network address with others on your WiFi!`);
   console.log(`⚡ WebSocket ready\n`);
 });
