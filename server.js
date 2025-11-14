@@ -274,10 +274,12 @@ function joinGame(clientId, conn, data) {
     return;
   }
 
-  // Check if this is a leaderboard display
+  // Check if this is a leaderboard display or history viewer
   const isLeaderboardDisplay = data.name === 'Leaderboard Display';
+  const isHistoryViewer = data.name === 'History Viewer';
+  const isDisplayClient = isLeaderboardDisplay || isHistoryViewer;
   
-  if (!isLeaderboardDisplay) {
+  if (!isDisplayClient) {
     // Only add actual players to the game
     game.addParticipant(clientId, data.name);
   }
@@ -285,6 +287,7 @@ function joinGame(clientId, conn, data) {
   conn.gameCode = data.code;
   conn.isHost = false;
   conn.isLeaderboardDisplay = isLeaderboardDisplay;
+  conn.isHistoryViewer = isHistoryViewer;
 
   conn.ws.send(
     JSON.stringify({
@@ -294,7 +297,7 @@ function joinGame(clientId, conn, data) {
     })
   );
 
-  if (!isLeaderboardDisplay) {
+  if (!isDisplayClient) {
     broadcastToGame(data.code, {
       type: 'participantJoined',
       participants: Array.from(game.participants.values()),
@@ -318,6 +321,9 @@ function handleBuzz(clientId, conn) {
   const game = games.get(conn.gameCode);
   if (!game || !game.currentRound) return;
 
+  // Prevent display clients from buzzing
+  if (conn.isLeaderboardDisplay || conn.isHistoryViewer) return;
+
   const buzzData = game.buzz(clientId, Date.now());
   if (buzzData) {
     broadcastToGame(conn.gameCode, {
@@ -330,11 +336,14 @@ function handleBuzz(clientId, conn) {
     // Check if all players have buzzed and auto-end round
     if (game.hasAllPlayersBuzzed()) {
       setTimeout(() => {
+        // Get the current round leaderboard before ending the round
+        const roundResults = game.getCurrentRoundLeaderboard();
+        
         game.endRound();
-        const leaderboard = game.getLeaderboard();
+        
         broadcastToGame(conn.gameCode, {
           type: 'roundEnded',
-          leaderboard,
+          leaderboard: roundResults,
           autoEnded: true,
         });
       }, 1000); // 1 second delay to show final results
@@ -347,11 +356,14 @@ function endRound(clientId, conn) {
   const game = games.get(conn.gameCode);
   if (!game) return;
 
+  // Get the current round leaderboard before ending the round
+  const roundResults = game.getCurrentRoundLeaderboard();
+  
   game.endRound();
-  const leaderboard = game.getLeaderboard();
+  
   broadcastToGame(conn.gameCode, {
     type: 'roundEnded',
-    leaderboard,
+    leaderboard: roundResults,
   });
 }
 
@@ -390,8 +402,8 @@ function handleDisconnect(clientId) {
   if (conn && conn.gameCode) {
     const game = games.get(conn.gameCode);
     if (game) {
-      // Only remove from participants if not a leaderboard display
-      if (!conn.isLeaderboardDisplay) {
+      // Only remove from participants if not a leaderboard display or history viewer
+      if (!conn.isLeaderboardDisplay && !conn.isHistoryViewer) {
         game.removeParticipant(clientId);
         broadcastToGame(conn.gameCode, {
           type: 'participantLeft',
@@ -399,7 +411,7 @@ function handleDisconnect(clientId) {
         });
       }
 
-      // Clean up empty games (only count actual players, not leaderboard displays)
+      // Clean up empty games (only count actual players, not leaderboard displays or history viewers)
       if (game.participants.size === 0) {
         games.delete(conn.gameCode);
       }
