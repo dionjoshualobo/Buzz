@@ -99,6 +99,21 @@ class Game {
     }
   }
 
+  getCurrentRoundLeaderboard() {
+    if (!this.currentRound || this.currentRound.buzzes.length === 0) {
+      return [];
+    }
+    
+    // Sort buzzes by time (fastest first)
+    const sortedBuzzes = [...this.currentRound.buzzes].sort((a, b) => a.time - b.time);
+    
+    return sortedBuzzes.map((buzz, index) => ({
+      name: buzz.name,
+      time: buzz.time,
+      position: index + 1
+    }));
+  }
+
   getLeaderboard() {
     const leaderboard = [];
     this.participants.forEach((participant) => {
@@ -279,6 +294,7 @@ function handleBuzz(clientId, conn) {
       type: 'buzzed',
       buzz: buzzData,
       position: game.currentRound.buzzes.length,
+      currentRoundLeaderboard: game.getCurrentRoundLeaderboard(),
     });
   }
 }
