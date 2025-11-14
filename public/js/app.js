@@ -154,7 +154,7 @@ function handleRoundStarted(data) {
     document.getElementById('playerBuzzResult').innerHTML = '';
   }
   
-  // Clear leaderboards for new round
+  // Clear leaderboards for new round - this happens for all clients
   updateCurrentRoundLeaderboard([]);
 }
 
@@ -199,15 +199,17 @@ function handleRoundEnded(data) {
   if (GameState.isHost) {
     document.getElementById('startRoundBtn').disabled = false;
     document.getElementById('endRoundBtn').disabled = true;
+    const endMessage = data.autoEnded ? 'ALL PLAYERS BUZZED - ROUND AUTO-ENDED' : 'ROUND COMPLETE';
     document.getElementById('hostRoundInfo').innerHTML = 
       `<div class="bg-green-600/10 border-l-4 border-green-600 p-3 text-sm">
-        ✅ ROUND COMPLETE
+        ✅ ${endMessage}
       </div>`;
   } else {
     document.getElementById('buzzBtn').disabled = true;
+    const endMessage = data.autoEnded ? 'ALL PLAYERS BUZZED!' : 'ROUND ENDED';
     document.getElementById('playerRoundInfo').innerHTML = 
       `<div class="bg-green-600 text-white p-6 text-center animate-slideDown">
-        <p class="font-bebas text-3xl">ROUND ENDED</p>
+        <p class="font-bebas text-3xl">${endMessage}</p>
       </div>`;
   }
   
@@ -268,12 +270,10 @@ function updateLeaderboard(leaderboard) {
           <div class="flex-1">
             <div class="font-bebas text-2xl md:text-3xl mb-1">${entry.name}</div>
             <div class="font-condensed text-xs md:text-sm text-gray-700">
-              Avg Speed: <span class="font-bold">${entry.avgTime}ms</span> • 
-              Total Buzzes: <span class="font-bold">${entry.totalBuzzes}</span> • 
-              Wins: <span class="font-bold">${entry.firstPlaces}</span>
+              Current Round • Position: <span class="font-bold">#${entry.position}</span>
             </div>
           </div>
-          <div class="font-headline text-3xl md:text-5xl text-right">${entry.avgTime}<span class="text-lg">ms</span></div>
+          <div class="font-headline text-3xl md:text-5xl text-right">${entry.time}<span class="text-lg">ms</span></div>
         </div>
       </div>
     `;
