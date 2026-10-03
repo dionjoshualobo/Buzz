@@ -15,6 +15,7 @@ A real-time multiplayer buzzer game with vintage newspaper-themed UI, perfect fo
 - **📰 Vintage UI**: Beautiful newspaper-themed interface with retro typography
 - **🔄 Auto-reconnect**: Resilient WebSocket connection with automatic recovery
 - **📱 Responsive Design**: Works on desktop and mobile devices
+- **🕘 Recent Sessions**: One-tap rejoin of previously used games on the same device
 
 ## 🚀 Quick Start
 
@@ -31,6 +32,9 @@ npm install
 
 # Start the server
 npm start
+
+# Or on a different port (default is 3001)
+PORT=3000 npm start
 ```
 
 ### Access the Application
@@ -38,7 +42,7 @@ npm start
 - **Main interface**: `http://localhost:3001`
 - **Leaderboard display**: `http://localhost:3001/leaderboard`
 
-> 💡 **For network access**: Use your computer's IP address instead of `localhost` (e.g., `http://192.168.1.100:3001`)
+> 💡 **For network access**: Use your computer's IP address instead of `localhost` (e.g., `http://192.168.1.100:3001`). The server picks a real LAN interface (WiFi or wired) and ignores Docker/VPN virtual interfaces, so the printed address is always reachable from phones.
 
 ## 📖 How to Use
 
@@ -175,22 +179,41 @@ All code is **fully documented** with JSDoc comments for easy maintenance.
 #### Client → Server
 | Message | Description | Required Fields |
 |---------|-------------|-----------------|
-| `createGame` | Create new game | - |
-| `joinGame` | Join existing game | `code`, `name` |
+| `createGame` | Create new game, or re-bind as host after a reconnect | - (optional: `code`, `clientId`) |
+| `joinGame` | Join existing game, or re-claim a seat after a reconnect | `code`, `name` (optional: `clientId`) |
 | `startRound` | Start new round | - (host only) |
-| `buzz` | Submit buzz | - (players only) |
+| `buzz` | Submit buzz | - (optional: `timestamp`) (players only) |
 | `endRound` | End current round | - (host only) |
 | `requestUpdate` | Request game state | - |
+| `ping` | Heartbeat | - |
 
 #### Server → Client
 | Message | Description | Data |
 |---------|-------------|------|
-| `gameCreated` | Game creation confirmation | `code`, `clientId` |
-| `joinedGame` | Join confirmation | `code`, `clientId` |
+| `gameCreated` | Game creation confirmation | `code`, `clientId`, `serverTime` |
+| `joinedGame` | Join confirmation | `code`, `clientId`, `serverTime` |
 | `participantJoined` | Player joined | `participants[]` |
-| `roundStarted` | Round started | `roundNumber` |
+| `roundStarted` | Round started | `roundNumber`, `serverTime` |
 | `buzzed` | Buzz received | `buzz`, `position` |
 | `roundEnded` | Round ended | `leaderboard[]` |
+| `gameUpdate` | Full state resync | `participants[]`, `leaderboard[]`, `currentRound`, `roundNumber`, `isHost`, `serverTime` |
+| `pong` | Heartbeat reply | `serverTime` |
+
+#### Connection handling
+The server pings every socket every 30s and terminates any that fail to answer, so
+links silently dropped by venue WiFi or NAT idle-timeouts are detected instead of
+leaving both ends believing a dead socket is open.
+
+Clients re-announce themselves (`createGame`/`joinGame`) with their previous
+`clientId` on every reconnect. Passing `clientId` retires that old connection, so a
+reconnecting device reclaims its seat rather than leaving a phantom participant that
+can never buzz. Sessions are persisted in `sessionStorage`, so a page reload or an
+iOS process termination restores the player automatically.
+
+Buzz timestamps are clock-corrected against the server (`serverTime` on any inbound
+message) and sent as `timestamp`, so rankings reflect the real tap instead of each
+phone's share of the WiFi round-trip. Values more than 5 minutes from server time
+are rejected in favour of server arrival time.
 
 > 🔍 **For detailed API documentation**, see code comments in `server.js` and `public/js/app.js`
 
