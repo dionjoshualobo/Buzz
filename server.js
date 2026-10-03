@@ -19,17 +19,34 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const games = new Map();
 
+// Virtual/container interfaces whose addresses are unreachable from participant devices.
+const VIRTUAL_IFACE = /^(lo$|docker|br-|br\d|veth|virbr|vmnet|vboxnet|tun|tap|wg|zt|cali|flannel|cni|dummy|apparmor|azvpn|bond-slave)/;
+
+function isPrivateIPv4(addr) {
+  return (
+    /^10\./.test(addr) ||
+    /^192\.168\./.test(addr) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(addr)
+  );
+}
+
 function getNetworkIP() {
   const interfaces = os.networkInterfaces();
+  const candidates = [];
+
   for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      // Skip internal (i.e. 127.0.0.1) and non-IPv4 addresses
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
+    if (VIRTUAL_IFACE.test(name)) continue;
+    for (const iface of interfaces[name] || []) {
+      if (iface.family !== 'IPv4' || iface.internal) continue;
+      if (!isPrivateIPv4(iface.address)) continue;
+      // Prefer WiFi (participants are on the venue network), then wired.
+      const score = /^wl/.test(name) ? 0 : /^(en|eth|eno|ens|enp)/.test(name) ? 1 : 2;
+      candidates.push({ name, address: iface.address, score });
     }
   }
-  return 'localhost'; // fallback
+
+  candidates.sort((a, b) => a.score - b.score);
+  return candidates.length ? candidates[0].address : 'localhost';
 }
 
 function generateCode() {
@@ -44,6 +61,8 @@ class Game {
     this.rounds = [];
     this.currentRound = null;
     this.roundStartTime = null;
+    this.roundCounter = 0;
+    this.roundEligibleIds = new Set();
   }
 
   addParticipant(id, name) {
@@ -59,12 +78,17 @@ class Game {
   }
 
   startRound() {
+    // Monotonic so a round number can never be reused within a game.
+    this.roundCounter += 1;
     this.currentRound = {
-      roundNumber: this.rounds.length + 1,
+      roundNumber: this.roundCounter,
       buzzes: [],
       startTime: Date.now(),
     };
     this.roundStartTime = Date.now();
+    // Snapshot the roster so the auto-end check is not thrown off by
+    // participants joining or disconnecting mid-round.
+    this.roundEligibleIds = new Set(this.participants.keys());
   }
 
   buzz(participantId, timestamp) {
@@ -72,6 +96,12 @@ class Game {
 
     const participant = this.participants.get(participantId);
     if (!participant) return null;
+
+    // One buzz per participant per round.
+    const alreadyBuzzed = this.currentRound.buzzes.some(
+      (b) => b.participantId === participantId
+    );
+    if (alreadyBuzzed) return null;
 
     const buzzTime = timestamp - this.roundStartTime;
     const buzzData = {
@@ -96,6 +126,7 @@ class Game {
       this.rounds.push(this.currentRound);
       this.currentRound = null;
       this.roundStartTime = null;
+      this.roundEligibleIds = new Set();
     }
   }
 
@@ -116,10 +147,18 @@ class Game {
 
   hasAllPlayersBuzzed() {
     if (!this.currentRound) return false;
-    
-    // Check if all participants have buzzed in this round
-    const buzzedParticipantIds = new Set(this.currentRound.buzzes.map(b => b.participantId));
-    return buzzedParticipantIds.size >= this.participants.size;
+
+    // Only count players who were in the round AND are still connected.
+    // A player who drops out mid-round must not block the auto-end.
+    const eligible = [...this.roundEligibleIds].filter((id) =>
+      this.participants.has(id)
+    );
+    if (eligible.length === 0) return false;
+
+    const buzzedParticipantIds = new Set(
+      this.currentRound.buzzes.map((b) => b.participantId)
+    );
+    return eligible.every((id) => buzzedParticipantIds.has(id));
   }
 
   getLeaderboard() {
@@ -160,17 +199,18 @@ const server = http.createServer((req, res) => {
   let contentType = 'text/html';
 
   // Route handling
-  if (req.url === '/' || req.url === '/index.html') {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  if (pathname === '/' || pathname === '/index.html') {
     filePath = path.join(PUBLIC_DIR, 'index.html');
-  } else if (req.url === '/leaderboard' || req.url === '/leaderboard.html') {
+  } else if (pathname === '/leaderboard' || pathname === '/leaderboard.html') {
     filePath = path.join(PUBLIC_DIR, 'leaderboard.html');
-  } else if (req.url === '/history' || req.url === '/history.html') {
+  } else if (pathname === '/history' || pathname === '/history.html') {
     filePath = path.join(PUBLIC_DIR, 'history.html');
-  } else if (req.url.endsWith('.js')) {
-    filePath = path.join(PUBLIC_DIR, req.url);
+  } else if (pathname.endsWith('.js')) {
+    filePath = path.join(PUBLIC_DIR, pathname);
     contentType = 'application/javascript';
-  } else if (req.url.endsWith('.css')) {
-    filePath = path.join(PUBLIC_DIR, req.url);
+  } else if (pathname.endsWith('.css')) {
+    filePath = path.join(PUBLIC_DIR, pathname);
     contentType = 'text/css';
   } else {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -197,11 +237,18 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocket.Server({ server });
 const connections = new Map();
 
+const HEARTBEAT_INTERVAL = 30000;
+
 wss.on('connection', (ws) => {
   const clientId = Math.random().toString(36).substring(2);
-  connections.set(clientId, { ws, gameCode: null, isHost: false });
+  ws.isAlive = true;
+  connections.set(clientId, { ws, gameCode: null, isHost: false, name: null });
 
   console.log(`✅ Client connected: ${clientId}`);
+
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
   ws.on('message', (msg) => {
     try {
@@ -215,7 +262,27 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     handleDisconnect(clientId);
   });
+
+  ws.on('error', () => {
+    handleDisconnect(clientId);
+  });
 });
+
+// Reap sockets the network silently dropped (idle NAT / WiFi timeouts). Without
+// this, both ends believe a dead connection is still OPEN and buzzes vanish.
+const heartbeatTimer = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      console.log('💀 Terminating unresponsive socket');
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL);
+
+wss.on('close', () => clearInterval(heartbeatTimer));
 
 function handleMessage(clientId, data) {
   const conn = connections.get(clientId);
@@ -223,7 +290,7 @@ function handleMessage(clientId, data) {
 
   switch (data.type) {
     case 'createGame':
-      createGame(clientId, conn);
+      createGame(clientId, conn, data);
       break;
     case 'joinGame':
       joinGame(clientId, conn, data);
@@ -232,7 +299,7 @@ function handleMessage(clientId, data) {
       startRound(clientId, conn);
       break;
     case 'buzz':
-      handleBuzz(clientId, conn);
+      handleBuzz(clientId, conn, data);
       break;
     case 'endRound':
       endRound(clientId, conn);
@@ -243,26 +310,64 @@ function handleMessage(clientId, data) {
     case 'requestHistory':
       sendHistory(clientId, conn);
       break;
+    case 'ping':
+      conn.ws.send(JSON.stringify({ type: 'pong', serverTime: Date.now() }));
+      break;
   }
 }
 
-function createGame(clientId, conn) {
-  const code = generateCode();
-  const game = new Game(code, clientId);
-  games.set(code, game);
+/**
+ * A reconnecting client is a NEW connection with a NEW clientId, but it is the same
+ * human on the same device. Retire its previous connection so the roster does not
+ * keep a phantom participant that can never buzz (and would block auto-end).
+ */
+function claimIdentity(clientId, previousClientId) {
+  if (!previousClientId || previousClientId === clientId) return;
+  const prev = connections.get(previousClientId);
+  if (!prev) return;
+
+  detachParticipant(previousClientId);
+  connections.delete(previousClientId);
+  try {
+    prev.ws.close(4000, 'Replaced by reconnect');
+  } catch (_) {
+    /* already gone */
+  }
+}
+
+function createGame(clientId, conn, data = {}) {
+  claimIdentity(clientId, data.clientId);
+
+  const requested = typeof data.code === 'string' ? data.code.trim().toUpperCase() : '';
+  let code = requested;
+  let game = code ? games.get(code) : undefined;
+
+  if (game) {
+    // Host reconnect: rebind to the live game instead of wiping its roster.
+    game.hostId = clientId;
+  } else {
+    if (!code || games.has(code)) code = generateCode();
+    game = new Game(code, clientId);
+    games.set(code, game);
+  }
+
   conn.gameCode = code;
   conn.isHost = true;
+  conn.name = 'Host';
 
   conn.ws.send(
     JSON.stringify({
       type: 'gameCreated',
       code,
       clientId,
+      serverTime: Date.now(),
     })
   );
 }
 
 function joinGame(clientId, conn, data) {
+  claimIdentity(clientId, data.clientId);
+
   const game = games.get(data.code);
   if (!game) {
     conn.ws.send(
@@ -286,6 +391,7 @@ function joinGame(clientId, conn, data) {
   
   conn.gameCode = data.code;
   conn.isHost = false;
+  conn.name = data.name;
   conn.isLeaderboardDisplay = isLeaderboardDisplay;
   conn.isHistoryViewer = isHistoryViewer;
 
@@ -294,6 +400,7 @@ function joinGame(clientId, conn, data) {
       type: 'joinedGame',
       code: data.code,
       clientId,
+      serverTime: Date.now(),
     })
   );
 
@@ -314,17 +421,36 @@ function startRound(clientId, conn) {
   broadcastToGame(conn.gameCode, {
     type: 'roundStarted',
     roundNumber: game.currentRound.roundNumber,
+    serverTime: Date.now(),
   });
 }
 
-function handleBuzz(clientId, conn) {
+const MAX_CLIENT_CLOCK_SKEW = 5 * 60 * 1000;
+
+function resolveBuzzTimestamp(data) {
+  const serverNow = Date.now();
+  const clientTime = Number(data.timestamp);
+
+  // Trust the client's clock-corrected stamp when plausible, so a buzz reflects the
+  // actual tap instead of server arrival (which adds a full RTT of venue WiFi
+  // latency plus mobile-network latency on every phone).
+  if (
+    Number.isFinite(clientTime) &&
+    Math.abs(clientTime - serverNow) <= MAX_CLIENT_CLOCK_SKEW
+  ) {
+    return clientTime;
+  }
+  return serverNow;
+}
+
+function handleBuzz(clientId, conn, data = {}) {
   const game = games.get(conn.gameCode);
   if (!game || !game.currentRound) return;
 
   // Prevent display clients from buzzing
   if (conn.isLeaderboardDisplay || conn.isHistoryViewer) return;
 
-  const buzzData = game.buzz(clientId, Date.now());
+  const buzzData = game.buzz(clientId, resolveBuzzTimestamp(data));
   if (buzzData) {
     broadcastToGame(conn.gameCode, {
       type: 'buzzed',
@@ -335,20 +461,32 @@ function handleBuzz(clientId, conn) {
 
     // Check if all players have buzzed and auto-end round
     if (game.hasAllPlayersBuzzed()) {
-      setTimeout(() => {
-        // Get the current round leaderboard before ending the round
-        const roundResults = game.getCurrentRoundLeaderboard();
-        
-        game.endRound();
-        
-        broadcastToGame(conn.gameCode, {
-          type: 'roundEnded',
-          leaderboard: roundResults,
-          autoEnded: true,
-        });
-      }, 1000); // 1 second delay to show final results
+      scheduleAutoEnd(game);
     }
   }
+}
+
+/**
+ * Auto-end fires after a delay so the final results are visible. It is bound to the
+ * round it was scheduled for: previously it called endRound() on whatever round was
+ * current, silently destroying a round the host had just started inside that window.
+ */
+function scheduleAutoEnd(game) {
+  const code = game.code;
+  const roundNumber = game.currentRound.roundNumber;
+
+  setTimeout(() => {
+    if (!game.currentRound || game.currentRound.roundNumber !== roundNumber) return;
+
+    const roundResults = game.getCurrentRoundLeaderboard();
+    game.endRound();
+
+    broadcastToGame(code, {
+      type: 'roundEnded',
+      leaderboard: roundResults,
+      autoEnded: true,
+    });
+  }, 1000); // 1 second delay to show final results
 }
 
 function endRound(clientId, conn) {
@@ -377,7 +515,9 @@ function sendUpdate(clientId, conn) {
       participants: Array.from(game.participants.values()),
       leaderboard: game.getLeaderboard(),
       currentRound: game.currentRound,
+      roundNumber: game.currentRound ? game.currentRound.roundNumber : 0,
       isHost: conn.isHost,
+      serverTime: Date.now(),
     })
   );
 }
@@ -397,34 +537,59 @@ function sendHistory(clientId, conn) {
   );
 }
 
+/**
+ * Remove a connection's participant seat and tell the room. Split out of
+ * handleDisconnect so a reconnecting client can release its old seat cleanly
+ * without relying on the old socket's close event.
+ */
+function detachParticipant(clientId) {
+  const conn = connections.get(clientId);
+  if (!conn || !conn.gameCode) return;
+  if (conn.isLeaderboardDisplay || conn.isHistoryViewer) return;
+
+  const game = games.get(conn.gameCode);
+  if (!game) return;
+  if (!game.participants.has(clientId)) return;
+
+  game.removeParticipant(clientId);
+  broadcastToGame(conn.gameCode, {
+    type: 'participantLeft',
+    participants: Array.from(game.participants.values()),
+  });
+}
+
+function cleanupGameIfEmpty(gameCode) {
+  const game = games.get(gameCode);
+  if (!game) return;
+
+  // Keep the game alive while any connection still references it (host reconnecting,
+  // a leaderboard display still open, etc.).
+  const stillReferenced = [...connections.values()].some(
+    (c) => c.gameCode === gameCode
+  );
+  if (stillReferenced || game.participants.size > 0) return;
+
+  games.delete(gameCode);
+}
+
 function handleDisconnect(clientId) {
   const conn = connections.get(clientId);
-  if (conn && conn.gameCode) {
-    const game = games.get(conn.gameCode);
-    if (game) {
-      // Only remove from participants if not a leaderboard display or history viewer
-      if (!conn.isLeaderboardDisplay && !conn.isHistoryViewer) {
-        game.removeParticipant(clientId);
-        broadcastToGame(conn.gameCode, {
-          type: 'participantLeft',
-          participants: Array.from(game.participants.values()),
-        });
-      }
+  if (!conn) return; // already retired by claimIdentity()
 
-      // Clean up empty games (only count actual players, not leaderboard displays or history viewers)
-      if (game.participants.size === 0) {
-        games.delete(conn.gameCode);
-      }
-    }
-  }
+  const gameCode = conn.gameCode;
+  detachParticipant(clientId);
   connections.delete(clientId);
+  if (gameCode) cleanupGameIfEmpty(gameCode);
+
   console.log(`❌ Client disconnected: ${clientId}`);
 }
 
 function broadcastToGame(gameCode, message) {
+  if (!gameCode) return;
+  const payload = JSON.stringify(message);
   connections.forEach((conn) => {
     if (conn.gameCode === gameCode && conn.ws.readyState === WebSocket.OPEN) {
-      conn.ws.send(JSON.stringify(message));
+      conn.ws.send(payload);
     }
   });
 }
