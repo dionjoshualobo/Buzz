@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
   <title>📊 Live Leaderboard Display</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,6 +33,18 @@
     }
   </script>
   <style>
+    /* iOS: kill the legacy ~300ms click delay and stop double-tap zoom. */
+    button, input {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    input {
+      font-size: max(16px, 1rem);
+    }
     body {
       font-family: 'Roboto Condensed', sans-serif;
       background: #f5e6d3;
@@ -123,6 +139,8 @@
     
     let ws = null;
     let gameCode = null;
+    let heartbeatTimer = null;
+    let lastPongAt = 0;
     let totalRounds = 0;
     let fastestBuzz = null;
 
@@ -131,10 +149,16 @@
 
       ws.onopen = () => {
         console.log('✅ Connected to server');
-        
+        lastPongAt = Date.now();
+        startHeartbeat();
+
         // If game code provided in URL, auto-join
         if (gameCodeParam) {
           joinAsDisplay(gameCodeParam.toUpperCase());
+        } else if (gameCode) {
+          // Reconnect: re-join the game we were already showing instead of
+          // prompting again (which would block the display on every drop).
+          joinAsDisplay(gameCode);
         } else {
           // Prompt for game code
           const code = prompt('Enter game code to display:');
@@ -145,18 +169,50 @@
       };
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch (_) {
+          return;
+        }
+        if (data.type === 'pong') {
+          lastPongAt = Date.now();
+          return;
+        }
         handleMessage(data);
       };
 
       ws.onclose = () => {
         console.log('❌ Disconnected - Reconnecting...');
+        stopHeartbeat();
         setTimeout(initWebSocket, 2000);
       };
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
       };
+    }
+
+    // Detect sockets the network dropped without a close event.
+    function startHeartbeat() {
+      stopHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (Date.now() - lastPongAt > 35000) {
+          console.warn('⚠️ Socket unresponsive, forcing reconnect');
+          try { ws.close(); } catch (_) {}
+          return;
+        }
+        try { ws.send(JSON.stringify({ type: 'ping' })); } catch (_) {
+          try { ws.close(); } catch (_) {}
+        }
+      }, 20000);
+    }
+
+    function stopHeartbeat() {
+      if (!heartbeatTimer) return;
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
     }
 
     function joinAsDisplay(code) {
