@@ -70,6 +70,7 @@ class Game {
       id,
       name,
       buzzHistory: [],
+      connected: true,
     });
   }
 
@@ -87,8 +88,13 @@ class Game {
     };
     this.roundStartTime = Date.now();
     // Snapshot the roster so the auto-end check is not thrown off by
-    // participants joining or disconnecting mid-round.
-    this.roundEligibleIds = new Set(this.participants.keys());
+    // participants joining or disconnecting mid-round. Offline participants
+    // should not hold the round open.
+    this.roundEligibleIds = new Set(
+      [...this.participants.entries()]
+        .filter(([, p]) => p.connected !== false)
+        .map(([id]) => id)
+    );
   }
 
   buzz(participantId, timestamp) {
@@ -150,9 +156,10 @@ class Game {
 
     // Only count players who were in the round AND are still connected.
     // A player who drops out mid-round must not block the auto-end.
-    const eligible = [...this.roundEligibleIds].filter((id) =>
-      this.participants.has(id)
-    );
+    const eligible = [...this.roundEligibleIds].filter((id) => {
+      const participant = this.participants.get(id);
+      return participant && participant.connected !== false;
+    });
     if (eligible.length === 0) return false;
 
     const buzzedParticipantIds = new Set(
@@ -310,6 +317,11 @@ function handleMessage(clientId, data) {
     case 'requestHistory':
       sendHistory(clientId, conn);
       break;
+    case 'leaveGame':
+      detachParticipant(clientId);
+      connections.delete(clientId);
+      if (conn.gameCode) cleanupGameIfEmpty(conn.gameCode);
+      break;
     case 'ping':
       conn.ws.send(JSON.stringify({ type: 'pong', serverTime: Date.now() }));
       break;
@@ -326,7 +338,9 @@ function claimIdentity(clientId, previousClientId) {
   const prev = connections.get(previousClientId);
   if (!prev) return;
 
-  detachParticipant(previousClientId);
+  // Keep the participant record alive so iOS reloads do not visibly un-join
+  // and re-add the name. The previous socket must have its close handler
+  // ignored; deleting it first makes the close event see `undefined`.
   connections.delete(previousClientId);
   try {
     prev.ws.close(4000, 'Replaced by reconnect');
@@ -385,8 +399,34 @@ function joinGame(clientId, conn, data) {
   const isDisplayClient = isLeaderboardDisplay || isHistoryViewer;
   
   if (!isDisplayClient) {
-    // Only add actual players to the game
-    game.addParticipant(clientId, data.name);
+    const previousClientId = typeof data.clientId === 'string' ? data.clientId : '';
+    const previous = previousClientId ? game.participants.get(previousClientId) : null;
+
+    if (previous) {
+      // Rejoin after a sleep/reload: keep the player’s seat and history instead of
+      // visually removing them then adding “Alice” again under a fresh id.
+      game.participants.delete(previousClientId);
+      previous.id = clientId;
+      previous.name = data.name || previous.name;
+      previous.connected = true;
+      game.participants.set(clientId, previous);
+
+      if (game.roundEligibleIds.has(previousClientId)) {
+        game.roundEligibleIds.delete(previousClientId);
+        game.roundEligibleIds.add(clientId);
+      }
+      const migrate = (round) => {
+        if (!round?.buzzes) return;
+        round.buzzes.forEach((b) => {
+          if (b.participantId === previousClientId) b.participantId = clientId;
+        });
+      };
+      migrate(game.currentRound);
+      game.rounds.forEach(migrate);
+    } else {
+      // Only add actual players to the game
+      game.addParticipant(clientId, data.name);
+    }
   }
   
   conn.gameCode = data.code;
@@ -538,6 +578,30 @@ function sendHistory(clientId, conn) {
 }
 
 /**
+ * Mark a participant offline instead of deleting their seat. iOS locks/sleeps
+ * close the socket, but the person is still in the room; deleting them and
+ * re-adding them when the phone wakes was jarring and showed duplicate roster
+ * entries.
+ */
+function markParticipantOffline(clientId) {
+  const conn = connections.get(clientId);
+  if (!conn || !conn.gameCode) return;
+  if (conn.isLeaderboardDisplay || conn.isHistoryViewer) return;
+
+  const game = games.get(conn.gameCode);
+  if (!game) return;
+
+  const participant = game.participants.get(clientId);
+  if (!participant) return;
+
+  participant.connected = false;
+  broadcastToGame(conn.gameCode, {
+    type: 'participantUpdated',
+    participants: Array.from(game.participants.values()),
+  });
+}
+
+/**
  * Remove a connection's participant seat and tell the room. Split out of
  * handleDisconnect so a reconnecting client can release its old seat cleanly
  * without relying on the old socket's close event.
@@ -577,7 +641,7 @@ function handleDisconnect(clientId) {
   if (!conn) return; // already retired by claimIdentity()
 
   const gameCode = conn.gameCode;
-  detachParticipant(clientId);
+  markParticipantOffline(clientId);
   connections.delete(clientId);
   if (gameCode) cleanupGameIfEmpty(gameCode);
 

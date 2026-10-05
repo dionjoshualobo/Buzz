@@ -169,8 +169,25 @@ function syncClock(serverTime) {
 /**
  * Initialize WebSocket connection with auto-reconnect
  */
-function initWebSocket() {
+function initWebSocket(forceCloseExisting = false) {
   clearReconnectTimer();
+
+  const existing = GameState.ws;
+  if (existing) {
+    if (
+      existing.readyState === WebSocket.CONNECTING ||
+      existing.readyState === WebSocket.OPEN
+    ) {
+      if (!forceCloseExisting) return;
+      try { existing.close(); } catch (_) { /* ignore */ }
+    }
+    // Prevent a stale socket's close event from scheduling another reconnect.
+    existing.onclose = null;
+    existing.onerror = null;
+    if (GameState.ws === existing) GameState.ws = null;
+  }
+
+  stopHeartbeat();
   GameState.intentionalClose = false;
   const ws = new WebSocket(`ws://${location.host}`);
   GameState.ws = ws;
@@ -178,6 +195,7 @@ function initWebSocket() {
   ws.onopen = () => {
     console.log('✅ Connected to server');
     GameState.reconnectAttempts = 0;
+    clearReconnectTimer();
     setConnectionStatus('online');
     startHeartbeat();
     rejoinAfterReconnect();
@@ -202,8 +220,9 @@ function initWebSocket() {
 
   ws.onclose = () => {
     stopHeartbeat();
-    if (GameState.ws === ws) GameState.ws = null;
     console.log('❌ Disconnected from server');
+    if (GameState.ws !== ws) return;
+    GameState.ws = null;
     setConnectionStatus(GameState.gameCode ? 'reconnecting' : 'offline');
     scheduleReconnect();
   };
@@ -366,6 +385,7 @@ function handleMessage(data) {
     error: handleError,
     participantJoined: handleParticipantUpdate,
     participantLeft: handleParticipantUpdate,
+    participantUpdated: handleParticipantUpdate,
     roundStarted: handleRoundStarted,
     buzzed: handleBuzzed,
     roundEnded: handleRoundEnded,
@@ -569,8 +589,8 @@ function updateParticipants(participants) {
     list.innerHTML = '<div class="text-gray-500 text-center text-sm">Waiting for players to join...</div>';
   } else {
     list.innerHTML = participants.map((p, index) => 
-      `<div class="border-l-4 border-blue-ink bg-blue-ink/5 p-3 animate-slideDown" style="animation-delay: ${index * 0.05}s">
-        <span class="font-condensed text-base">👤 ${p.name}</span>
+      `<div class="border-l-4 ${p.connected === false ? 'border-gray-300 bg-gray-100' : 'border-blue-ink bg-blue-ink/5'} p-3 animate-slideDown" style="animation-delay: ${index * 0.05}s">
+        <span class="font-condensed text-base">👤 ${p.name}${p.connected === false ? ' <span class="text-gray-500">(offline)</span>' : ''}</span>
       </div>`
     ).join('');
   }
@@ -778,6 +798,8 @@ function buzz() {
 
 function leaveGame() {
   if (confirm('Are you sure you want to leave this session?')) {
+    // Tell the server this is an intentional exit, not a phone waking up.
+    sendMessage({ type: 'leaveGame' });
     showWelcomeScreen();
   }
 }
@@ -795,12 +817,15 @@ function handleResume() {
   if (!GameState.gameCode) return;
 
   const ws = GameState.ws;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    initWebSocket();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    resyncRoundState();
     return;
   }
 
-  resyncRoundState();
+  // CONNECTING: give the in-flight join a chance to finish before replacing it.
+  if (ws && ws.readyState === WebSocket.CONNECTING) return;
+
+  initWebSocket(true);
 }
 
 // ============================================
